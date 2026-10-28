@@ -1,4 +1,4 @@
-"""Setups: one TOML file per experimental setup, chosen once at startup.
+"""Setups: one YAML file per experimental setup, chosen once at startup.
 
 A setup names its detectors (and their placement), the trigger channel if any,
 and a list of dated cabling entries (Stage A). Nothing in this package
@@ -22,14 +22,12 @@ from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:          # Python < 3.11
-    import tomli as tomllib
+import yaml
 
 from . import routing
 
 DEFAULT_SETUP_FILE = Path.home() / ".config" / "p2-readout" / "setup"
+SUFFIXES = (".yaml", ".yml")
 
 
 @dataclass(frozen=True)
@@ -99,14 +97,15 @@ def available_setups():
     for d in _search_dirs():
         if d.is_dir():
             for p in sorted(d.iterdir(), key=lambda p: p.name):
-                if p.name.endswith(".toml"):
-                    out.setdefault(p.name[:-5], p)
+                stem, dot, ext = p.name.rpartition(".")
+                if dot and "." + ext in SUFFIXES:
+                    out.setdefault(stem, p)
     return out
 
 
 def find_setup(name_or_path):
     p = Path(name_or_path)
-    if p.suffix == ".toml" or p.is_file():
+    if p.suffix in SUFFIXES or p.is_file():
         if not p.is_file():
             raise FileNotFoundError(f"setup file {p} does not exist")
         return p
@@ -137,7 +136,9 @@ def load_setup(name_or_path=None):
     """Load and check a setup; None resolves it via resolve_setup()."""
     path = find_setup(resolve_setup(name_or_path))
     raw = path.read_bytes()
-    data = tomllib.loads(raw.decode("utf-8"))
+    data = yaml.safe_load(raw.decode("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: not a setup (expected a YAML mapping)")
     setup = _parse(data, str(path))
     return Setup(**{**setup.__dict__, "sha256": hashlib.sha256(raw).hexdigest()})
 
@@ -152,15 +153,15 @@ def _parse(d, path):
     design = need(d, "design", "the setup")
     des = routing.design(design)
     detectors = {}
-    for det in need(d, "detector", "the setup"):
-        dn = need(det, "name", "a [[detector]]")
+    for det in need(d, "detectors", "the setup"):
+        dn = need(det, "name", "an entry of detectors")
         if dn in detectors:
             raise ValueError(f"{path}: detector {dn!r} listed twice")
         detectors[dn] = {k: v for k, v in det.items() if k != "name"}
 
     entries = []
     for e in need(d, "cabling", "the setup"):
-        vf = as_datetime(need(e, "valid_from", "a [[cabling]] entry"))
+        vf = as_datetime(need(e, "valid_from", "an entry of cabling"))
         rows = need(e, "hybrids", f"cabling from {vf}")
         seen_vmm, seen_conn = set(), set()
         for r in rows:
@@ -188,7 +189,7 @@ def _parse(d, path):
     if len({e.valid_from for e in entries}) != len(entries):
         raise ValueError(f"{path}: two cabling entries share a valid_from")
 
-    known = {"name", "site", "design", "detector", "cabling", "trigger", "description"}
+    known = {"name", "site", "design", "detectors", "cabling", "trigger", "description"}
     return Setup(name=name, site=d.get("site", ""), design=design,
                  detectors=detectors, cabling=tuple(entries),
                  trigger=d.get("trigger"), description=d.get("description", ""),

@@ -14,7 +14,7 @@ def main(argv=None):
     for name, text in (("show", "print the cabling in force"),
                        ("table", "write the channel table as CSV")):
         p = sub.add_parser(name, help=text)
-        p.add_argument("--setup", help="name or .toml path (else $P2_SETUP, "
+        p.add_argument("--setup", help="name or .yaml path (else $P2_SETUP, "
                                        "else the machine default)")
         p.add_argument("--when", default="now",
                        help="ISO date/time, e.g. a run start (default: now)")

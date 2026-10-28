@@ -26,7 +26,7 @@ p2-mapping table --setup lab_saclay_2026 --when 2026-10-27 table.csv
 
 | Stage | What | Where | Changes when |
 | --- | --- | --- | --- |
-| A cabling | hybrid → detector connector, cable, per-half channel order | `data/setups/<setup>.toml`, dated entries | someone re-cables |
+| A cabling | hybrid → detector connector, cable, per-half channel order | `data/setups/<setup>.yaml`, dated entries | someone re-cables |
 | B routing | connector half + channel → strip → `channel_id` | `routing.py` (`DESIGNS`) | a new adapter or PCB design |
 | C geometry | `channel_id` → pad centre, size, radius, phi | `data/geometry/p2_basket_pads.csv` | never, for one detector design |
 
@@ -40,8 +40,8 @@ variable `P2_SETUP`, a one-line default in `$P2_SETUP_FILE` or
 guessing a site. Site-local setup files can live outside the package: put their
 directory in `P2_SETUPS_DIR`.
 
-A cabling entry is picked by time, so a re-cabling is a new `[[cabling]]` entry
-with its `valid_from`, not a new setup. A time before the first entry is an
+A cabling entry is picked by time, so a re-cabling is a new entry under
+`cabling:` with its `valid_from`, not a new setup. A time before the first entry is an
 error: there is no cabling to assume.
 
 ## Shipped setups
@@ -68,5 +68,10 @@ code builds: `vmm_stations.build_pad_table()` (SPS, with its overrides, and all
 strategy / bottom-half scan variants) and `orientation_check.Mapper` for the
 lab before and after the c3-c5 re-cabling (`conn_shift` 0 and -1).
 
-Setup files are TOML, read with the standard library (`tomllib`, Python 3.11+;
-`tomli` below that), so the DAQ machine needs no extra package.
+Setup files are YAML (PyYAML, `yaml.safe_load`), like the group's other
+configuration files.
+
+## Versions
+
+- **0.2.0** setup files in YAML instead of TOML; same content, same tables.
+- **0.1.0** first release, TOML setup files.

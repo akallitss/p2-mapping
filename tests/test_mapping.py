@@ -98,7 +98,7 @@ def test_resolve_setup_precedence(monkeypatch, tmp_path):
     assert pm.resolve_setup() == "lab_saclay_2026"
     monkeypatch.setenv("P2_SETUP", "sps_h4_2026")
     assert pm.resolve_setup() == "sps_h4_2026"
-    assert pm.resolve_setup("x.toml") == "x.toml"
+    assert pm.resolve_setup("x.yaml") == "x.yaml"
     monkeypatch.delenv("P2_SETUP")
     monkeypatch.setenv("P2_SETUP_FILE", str(tmp_path / "missing"))
     with pytest.raises(LookupError, match="no setup chosen"):
@@ -107,22 +107,22 @@ def test_resolve_setup_precedence(monkeypatch, tmp_path):
 
 def test_site_local_setup_dir(monkeypatch, tmp_path):
     src = pm.load_setup("lab_saclay_2026").path
-    (tmp_path / "bench_x.toml").write_text(open(src).read().replace(
-        'name = "lab_saclay_2026"', 'name = "bench_x"'))
+    (tmp_path / "bench_x.yaml").write_text(open(src).read().replace(
+        "name: lab_saclay_2026", "name: bench_x"))
     monkeypatch.setenv("P2_SETUPS_DIR", str(tmp_path))
     assert pm.load_setup("bench_x").name == "bench_x"
 
 
 @pytest.mark.parametrize("old, new, msg", [
-    ("bottom_vmm = 2,  top_vmm = 3", "bottom_vmm = 4,  top_vmm = 5", "VMM 4 cabled twice"),
-    ('detector = "P2_MID", connector = 4', 'detector = "P2_MID", connector = 6',
-     "cabled twice"),
-    ("connector = 6, hybrid = 9", "connector = 11, hybrid = 9", "out of range"),
-    ('top_order = "linear"', 'top_order = "sideways"', "unknown top_order"),
+    ("bottom_vmm: 2,  top_vmm: 3", "bottom_vmm: 4,  top_vmm: 5", "VMM 4 cabled twice"),
+    ("detector: P2_MID, connector: 4", "detector: P2_MID, connector: 6", "cabled twice"),
+    ("connector: 6, hybrid: 9", "connector: 11, hybrid: 9", "out of range"),
+    ("top_order: linear", "top_order: sideways", "unknown top_order"),
+    ("detectors:", "detector_list:", "missing 'detectors'"),
 ])
 def test_invalid_setups_rejected(tmp_path, old, new, msg):
     src = open(pm.load_setup("sps_h4_2026").path).read()
-    p = tmp_path / "bad.toml"
+    p = tmp_path / "bad.yaml"
     p.write_text(src.replace(old, new, 1))
     with pytest.raises(ValueError, match=msg):
         pm.load_setup(str(p))

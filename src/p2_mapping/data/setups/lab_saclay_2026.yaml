@@ -1,0 +1,55 @@
+# Saclay lab cosmic stand, from 2026-10-22: the three SPS P2 chambers lying
+# flat, one above the other, at the SPS z spacing. Hybrids H1-H9 and VMMs
+# 2-19 as at SPS; H0 not used. Self-triggered cosmics, no trigger hybrid.
+#
+# Sources: DAQ_Control_VMM_Beam run_config_beam.py (SITE == 'lab' branches),
+# the lab logbook (vmm_threshold_scan/logbook/LOGBOOK.md, run_1, run_111,
+# run_112 and the 2026-10-26 13:33 entry), docs/LAB_COSMICS_OBSERVATIONS.md.
+#
+# Within-half channel order: 'reverse' on every half. The SPS P2_IN overrides
+# are not applied: obs 63 found no wiring that beats plain reverse with the
+# Samtec cables, and cosmic_vmm_analysis/orientation_check.py uses reverse
+# everywhere. With no muon signal yet, the order is not validated here.
+
+name: lab_saclay_2026
+site: lab
+description: "Saclay lab cosmic stand, Oct 2026: P2_IN det3 / P2_MID det2 / P2_OUT det1"
+design: p2_basket
+
+detectors:
+  - {name: P2_IN,  alias: det3, z_mm: 320.0}
+  - {name: P2_MID, alias: det2, z_mm: 630.0}
+  - {name: P2_OUT, alias: det1, z_mm: 940.0}
+
+# no trigger: self-triggered cosmics
+
+cabling:
+  # Runs 1-111 (run_1 started 2026-10-22 18:08:46; run_111 ended 2026-10-25 21:34).
+  - valid_from: 2026-10-22T00:00:00
+    note: "connectors c4-c6, SAMPTEC 2m everywhere"
+    hybrids:
+      - {detector: P2_IN,  connector: 4, hybrid: 1, bottom_vmm: 2,  top_vmm: 3,  cable: SAMPTEC 2m}
+      - {detector: P2_IN,  connector: 5, hybrid: 2, bottom_vmm: 4,  top_vmm: 5,  cable: SAMPTEC 2m}
+      - {detector: P2_IN,  connector: 6, hybrid: 3, bottom_vmm: 6,  top_vmm: 7,  cable: SAMPTEC 2m}
+      - {detector: P2_MID, connector: 4, hybrid: 4, bottom_vmm: 8,  top_vmm: 9,  cable: SAMPTEC 2m}
+      - {detector: P2_MID, connector: 5, hybrid: 5, bottom_vmm: 10, top_vmm: 11, cable: SAMPTEC 2m}
+      - {detector: P2_MID, connector: 6, hybrid: 6, bottom_vmm: 12, top_vmm: 13, cable: SAMPTEC 2m}
+      - {detector: P2_OUT, connector: 4, hybrid: 7, bottom_vmm: 14, top_vmm: 15, cable: SAMPTEC 2m}
+      - {detector: P2_OUT, connector: 5, hybrid: 8, bottom_vmm: 16, top_vmm: 17, cable: SAMPTEC 2m}
+      - {detector: P2_OUT, connector: 6, hybrid: 9, bottom_vmm: 18, top_vmm: 19, cable: SAMPTEC 2m}
+
+  # Re-cabled by hand around 12:20 on 2026-10-26, together with an HV raise; no
+  # run between run_111 (ended 25 Oct 21:34) and run_112 (started 26 Oct 12:26).
+  # Same hybrids and VMMs, each moved one connector down.
+  - valid_from: 2026-10-26T00:00:00
+    note: "re-cabled to connectors c3-c5 (runs >= 112), SAMPTEC 2m everywhere"
+    hybrids:
+      - {detector: P2_IN,  connector: 3, hybrid: 1, bottom_vmm: 2,  top_vmm: 3,  cable: SAMPTEC 2m}
+      - {detector: P2_IN,  connector: 4, hybrid: 2, bottom_vmm: 4,  top_vmm: 5,  cable: SAMPTEC 2m}
+      - {detector: P2_IN,  connector: 5, hybrid: 3, bottom_vmm: 6,  top_vmm: 7,  cable: SAMPTEC 2m}
+      - {detector: P2_MID, connector: 3, hybrid: 4, bottom_vmm: 8,  top_vmm: 9,  cable: SAMPTEC 2m}
+      - {detector: P2_MID, connector: 4, hybrid: 5, bottom_vmm: 10, top_vmm: 11, cable: SAMPTEC 2m}
+      - {detector: P2_MID, connector: 5, hybrid: 6, bottom_vmm: 12, top_vmm: 13, cable: SAMPTEC 2m}
+      - {detector: P2_OUT, connector: 3, hybrid: 7, bottom_vmm: 14, top_vmm: 15, cable: SAMPTEC 2m}
+      - {detector: P2_OUT, connector: 4, hybrid: 8, bottom_vmm: 16, top_vmm: 17, cable: SAMPTEC 2m}
+      - {detector: P2_OUT, connector: 5, hybrid: 9, bottom_vmm: 18, top_vmm: 19, cable: SAMPTEC 2m}
