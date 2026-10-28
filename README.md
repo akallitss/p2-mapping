@@ -32,6 +32,16 @@ p2-mapping table --setup lab_saclay_2026 --when 2026-10-27 table.csv
 
 Detector placement (`z_mm`) is per setup, in the setup file.
 
+## Several FECs
+
+A VMM id is 5 bits, so with more than one FEC the same id repeats; the full
+experiment (180 hybrids, 360 VMMs) needs at least 12 FECs. A hybrid row can
+name its FEC (`fec: 3`), or the setup can give one default (`fec:` at top
+level). A row without a FEC matches any FEC, which is how the single-FEC SPS
+and lab setups are written. Lookup is by `(fec, vmm, ch)` when the hits carry
+`fec`; a channel cabled twice on the same FEC, or a no-FEC row sharing a VMM id
+with any other row, is refused.
+
 ## Choosing the setup
 
 Highest priority first: an explicit name or path (`--setup`), the environment
@@ -73,5 +83,8 @@ configuration files.
 
 ## Versions
 
+- **0.3.0** cabling rows can name their FEC; tables carry `fec` (-1 = any) and
+  lookup is by `(fec, vmm, ch)`, for setups with many FECs. Single-FEC setups
+  unchanged.
 - **0.2.0** setup files in YAML instead of TOML; same content, same tables.
 - **0.1.0** first release, TOML setup files.

@@ -148,3 +148,49 @@ def test_validation_metrics_prefer_the_true_order():
     wrong = pm.load_mapping("sps_h4_2026", "2026-07-30", order="pairswap")
     assert beam_spread(hits, true, "P2_MID")[0] <= beam_spread(hits, wrong, "P2_MID")[0]
     assert map_roughness(hits, true, "P2_MID") < map_roughness(hits, wrong, "P2_MID")
+
+
+MULTI_FEC = """
+name: two_fecs
+design: p2_basket
+detectors:
+  - {name: A, z_mm: 0.0}
+  - {name: B, z_mm: 100.0}
+cabling:
+  - valid_from: 2026-01-01T00:00:00
+    hybrids:
+      - {fec: 1, detector: A, connector: 1, hybrid: 1, bottom_vmm: 2, top_vmm: 3}
+      - {fec: 2, detector: B, connector: 1, hybrid: 2, bottom_vmm: 2, top_vmm: 3}
+      - {fec: 2, detector: B, connector: 2, hybrid: 3, bottom_vmm: 4, top_vmm: 5}
+"""
+
+
+def test_same_vmm_ids_on_two_fecs(tmp_path):
+    p = tmp_path / "two_fecs.yaml"
+    p.write_text(MULTI_FEC)
+    m = pm.load_mapping(str(p), "2026-06-01")
+    assert len(m.table) == 6 * 64 and m.fecs == [1, 2]
+    hits = pd.DataFrame({"fec": [1, 2, 2, 1, 3], "vmm": [2, 2, 4, 4, 2], "ch": [0, 0, 0, 0, 0]})
+    p_ = m.lookup(hits)
+    assert p_["detector"].tolist()[:3] == ["A", "B", "B"]
+    assert p_["mapped"].tolist() == [True, True, True, False, False]   # VMM 4 is only on FEC 2
+    with pytest.raises(ValueError, match="names FECs"):
+        m.pad_xy()
+
+
+def test_fec_clash_rules(tmp_path):
+    p = tmp_path / "bad.yaml"
+    p.write_text(MULTI_FEC.replace("{fec: 2, detector: B, connector: 1", "{fec: 1, detector: B, connector: 1"))
+    with pytest.raises(ValueError, match="VMM 2 on FEC 1 cabled twice"):
+        pm.load_setup(str(p))
+    p.write_text(MULTI_FEC.replace("{fec: 2, detector: B, connector: 1, hybrid: 2,",
+                                   "{detector: B, connector: 1, hybrid: 2,"))
+    with pytest.raises(ValueError, match="cabled twice"):            # no-FEC row matches any
+        pm.load_setup(str(p))
+
+
+def test_single_fec_setups_match_any_fec():
+    m = pm.load_mapping(LAB := "lab_saclay_2026", "2026-10-27")
+    assert m.fecs == [] and set(m.table["fec"]) == {-1}
+    hits = pd.DataFrame({"fec": [12, 1], "vmm": [2, 2], "ch": [0, 0]})
+    assert m.lookup(hits)["mapped"].tolist() == [True, True]

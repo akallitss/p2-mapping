@@ -163,8 +163,13 @@ def _parse(d, path):
     for e in need(d, "cabling", "the setup"):
         vf = as_datetime(need(e, "valid_from", "an entry of cabling"))
         rows = need(e, "hybrids", f"cabling from {vf}")
-        seen_vmm, seen_conn = set(), set()
+        seen_vmm, seen_conn = {}, set()
         for r in rows:
+            if "fec" not in r and "fec" in d:
+                r = {**r, "fec": d["fec"]}       # setup-level default FEC
+            fec = r.get("fec")
+            if fec is not None and not 0 <= int(fec) <= 15:
+                raise ValueError(f"{path}: fec {fec} out of range 0-15")
             for k in ("detector", "connector", "hybrid", "bottom_vmm", "top_vmm"):
                 need(r, k, f"a hybrid row of cabling from {vf}")
             if r["detector"] not in detectors:
@@ -172,10 +177,14 @@ def _parse(d, path):
                                  f"{r['detector']!r}")
             if not 1 <= r["connector"] <= des["n_connectors"]:
                 raise ValueError(f"{path}: connector {r['connector']} out of range")
+            # a VMM id repeats across FECs; a row without fec matches any FEC,
+            # so it clashes with every other row of the same VMM id
             for v in (r["bottom_vmm"], r["top_vmm"]):
-                if v in seen_vmm:
-                    raise ValueError(f"{path}: VMM {v} cabled twice in entry from {vf}")
-                seen_vmm.add(v)
+                for other in seen_vmm.get(v, []):
+                    if fec is None or other is None or other == fec:
+                        where = f"VMM {v}" + (f" on FEC {fec}" if fec is not None else "")
+                        raise ValueError(f"{path}: {where} cabled twice in entry from {vf}")
+                seen_vmm.setdefault(v, []).append(fec)
             key = (r["detector"], r["connector"])
             if key in seen_conn:
                 raise ValueError(f"{path}: {key} cabled twice in entry from {vf}")
@@ -183,13 +192,16 @@ def _parse(d, path):
             for k in ("bottom_order", "top_order"):
                 if k in r and r[k] not in routing.ORDERS:
                     raise ValueError(f"{path}: unknown {k} {r[k]!r}")
+        rows = [{**r, "fec": d["fec"]} if "fec" not in r and "fec" in d else r
+                for r in rows]
         entries.append(CablingEntry(valid_from=vf, hybrids=tuple(dict(r) for r in rows),
                                     note=e.get("note", "")))
     entries.sort(key=lambda e: e.valid_from)
     if len({e.valid_from for e in entries}) != len(entries):
         raise ValueError(f"{path}: two cabling entries share a valid_from")
 
-    known = {"name", "site", "design", "detectors", "cabling", "trigger", "description"}
+    known = {"name", "site", "design", "detectors", "cabling", "trigger", "description",
+             "fec"}
     return Setup(name=name, site=d.get("site", ""), design=design,
                  detectors=detectors, cabling=tuple(entries),
                  trigger=d.get("trigger"), description=d.get("description", ""),

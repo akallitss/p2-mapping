@@ -10,7 +10,7 @@ Three stages, each changing for its own reasons:
     C  geometry  channel_id -> pad position and shape            (geometry/*.csv)
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from .routing import DESIGNS, ORDERS, channel_id, within_to_strip   # noqa: E402
 from .setups import (CablingEntry, Setup, available_setups,         # noqa: E402

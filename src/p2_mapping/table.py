@@ -1,9 +1,13 @@
 """The channel table: Stage A cabling x Stage B routing x Stage C geometry.
 
-One row per instrumented (vmm, ch). Columns, in order:
+One row per instrumented (fec, vmm, ch). Columns, in order:
     vmm, ch, detector, station, connector_N, half, sector, strip, channel_id,
     pad_cx, pad_cy, radius, phi, pad_w, pad_h, pad_angle, delta_phi, mapped,
-    hybrid, cable, order, z_mm
+    fec, hybrid, cable, order, z_mm
+
+A VMM id is 5 bits, so with more than one FEC the same id repeats: a channel
+is identified by (fec, vmm, ch). fec = -1 means the cabling row names no FEC
+and matches any (setups with a single FEC, like the SPS 2026 and lab stands).
 
 `station` repeats `detector`; it is the column name the existing QA and
 analysis code (vmm_stations.build_pad_table) uses.
@@ -57,22 +61,23 @@ def build_table(setup, when, order=None, orders=None, bottom_half=None):
                                (r["top_vmm"], top, r.get("top_order"))):
             o = order or own or des["default_order"]
             o = orders.get((det, n, half), o)
+            fec = -1 if r.get("fec") is None else int(r["fec"])
             for within in range(des["channels_per_half"]):
                 strip = routing.within_to_strip(within, half, o)
                 rows.append((int(vmm), within, det, n, half, n - 1, strip,
                              routing.channel_id(n, strip, des["strips_per_connector"]),
-                             int(r["hybrid"]), r.get("cable", ""), o,
+                             fec, int(r["hybrid"]), r.get("cable", ""), o,
                              setup.detectors[det].get("z_mm", np.nan)))
 
     tab = pd.DataFrame(rows, columns=[
         "vmm", "ch", "detector", "connector_N", "half", "sector", "strip",
-        "channel_id", "hybrid", "cable", "order", "z_mm"])
+        "channel_id", "fec", "hybrid", "cable", "order", "z_mm"])
     tab.insert(3, "station", tab["detector"])
     pads = load_pads(setup.design)
     cols = [c for c in PAD_COLUMNS if c in pads.columns]
     tab = tab.merge(pads[cols], left_on="channel_id", right_index=True, how="left")
     tab["mapped"] = tab["pad_cx"].notna()
-    tab = tab.sort_values(["vmm", "ch"]).reset_index(drop=True)
+    tab = tab.sort_values(["fec", "vmm", "ch"]).reset_index(drop=True)
     first = ["vmm", "ch", "detector", "station", "connector_N", "half", "sector",
              "strip", "channel_id", *cols, "mapped"]
     tab = tab[first + [c for c in tab.columns if c not in first]]
@@ -93,29 +98,40 @@ class Mapping:
         self.when = as_datetime(when)
         self.cabling = self.setup.cabling_at(self.when)
         self.table = build_table(self.setup, self.when, **table_kw)
-        # (32, 64) -> row in table, -1 where nothing is cabled
-        self._row = np.full((32, 64), -1, dtype=np.int64)
-        self._row[self.table["vmm"].to_numpy(), self.table["ch"].to_numpy()] = \
-            np.arange(len(self.table))
+        # (fec 0-15 + "any" at 16, vmm, ch) -> row in table, -1 if not cabled
+        self._row = np.full((17, 32, 64), -1, dtype=np.int64)
+        f = self.table["fec"].to_numpy()
+        self._row[np.where(f < 0, 16, f), self.table["vmm"].to_numpy(),
+                  self.table["ch"].to_numpy()] = np.arange(len(self.table))
+        self.fecs = sorted(int(x) for x in np.unique(f) if x >= 0)
 
-    def rows(self, vmm, ch):
-        """Row index into `table` per hit, -1 for channels nothing is cabled to."""
+    def rows(self, vmm, ch, fec=None):
+        """Row index into `table` per hit, -1 for channels nothing is cabled to.
+
+        With `fec`, a row for that FEC wins; rows that name no FEC match any.
+        """
         vmm = np.asarray(vmm, dtype=np.int64)
         ch = np.asarray(ch, dtype=np.int64)
         ok = (vmm >= 0) & (vmm < 32) & (ch >= 0) & (ch < 64)
         out = np.full(vmm.shape, -1, dtype=np.int64)
-        out[ok] = self._row[vmm[ok], ch[ok]]
+        out[ok] = self._row[16, vmm[ok], ch[ok]]
+        if fec is not None and self.fecs:
+            fec = np.broadcast_to(np.asarray(fec, dtype=np.int64), vmm.shape)
+            okf = ok & (fec >= 0) & (fec < 16)
+            specific = self._row[fec[okf], vmm[okf], ch[okf]]
+            sub = out[okf]
+            out[okf] = np.where(specific >= 0, specific, sub)
         return out
 
     def lookup(self, hits, columns=None):
-        """Table columns for each hit (a DataFrame or dict with vmm and ch).
+        """Table columns for each hit (a DataFrame or dict with vmm, ch, maybe fec).
 
         Returns a DataFrame aligned with `hits`; uncabled channels get NaN and
-        mapped=False. Indexes a 32x64 lookup, so it never joins on every hit.
+        mapped=False. Indexes a lookup array, so it never joins on every hit.
         """
-        r = self.rows(hits["vmm"], hits["ch"])
+        r = self.rows(hits["vmm"], hits["ch"], hits["fec"] if "fec" in hits else None)
         cols = list(columns) if columns is not None else \
-            [c for c in self.table.columns if c not in ("vmm", "ch")]
+            [c for c in self.table.columns if c not in ("vmm", "ch", "fec")]
         # the table's index is 0..n-1, so row -1 reindexes to an all-NaN row
         out = self.table[cols].reindex(r).reset_index(drop=True)
         if "mapped" in out:
@@ -125,7 +141,9 @@ class Mapping:
         return out
 
     def pad_xy(self):
-        """(32, 64) arrays of pad x and y, NaN where unmapped."""
+        """(32, 64) arrays of pad x and y, NaN where unmapped (single-FEC setups)."""
+        if self.fecs:
+            raise ValueError("pad_xy is per VMM id; this setup names FECs, use lookup()")
         x = np.full((32, 64), np.nan)
         y = np.full((32, 64), np.nan)
         t = self.table
