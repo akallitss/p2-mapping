@@ -83,6 +83,14 @@ configuration files.
 
 ## Versions
 
+- **0.5.0** a cabling entry may carry its own `detectors` (placement: alias, z)
+  and `trigger` (or `trigger: null`), making it a complete dated snapshot of the
+  stand; `Setup.at(when)` gives the stand at a time and `Mapping.setup` is that,
+  so a chamber swap or a trigger switched on/off is dated like a re-cabling.
+  Entries without them fall back to the top level (existing files unchanged).
+  `p2_mapping.edit.add_entry(path, entry)`: insert a new dated entry into a
+  setup file as text (comments kept), checked by reading the result back.
+  Trigger checked ({hybrid, vmm, ch}, ch 0-63, its VMM not cabled to a detector).
 - **0.4.0** optional `hv` section in a setup (`Setup.hv`): which supply channel
   (card, channel) feeds which electrode, HV-only references, the operating point
   and ceilings; `set_here: false` where another machine holds the crate. Checked

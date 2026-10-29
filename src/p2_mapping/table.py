@@ -48,6 +48,7 @@ def build_table(setup, when, order=None, orders=None, bottom_half=None):
         setup = load_setup(setup)
     des = routing.design(setup.design)
     entry = setup.cabling_at(when)
+    placement = setup.at(when).detectors          # the stand at that time
     bot = bottom_half or des["bottom_vmm_half"]
     if bot not in routing.HALVES:
         raise ValueError(f"bottom_half must be 'bot' or 'top', got {bot!r}")
@@ -67,7 +68,7 @@ def build_table(setup, when, order=None, orders=None, bottom_half=None):
                 rows.append((int(vmm), within, det, n, half, n - 1, strip,
                              routing.channel_id(n, strip, des["strips_per_connector"]),
                              fec, int(r["hybrid"]), r.get("cable", ""), o,
-                             setup.detectors[det].get("z_mm", np.nan)))
+                             placement[det].get("z_mm", np.nan)))
 
     tab = pd.DataFrame(rows, columns=[
         "vmm", "ch", "detector", "connector_N", "half", "sector", "strip",
@@ -94,10 +95,14 @@ class Mapping:
     """
 
     def __init__(self, setup=None, when=None, **table_kw):
-        self.setup = setup if hasattr(setup, "cabling") else load_setup(setup)
+        full = setup if hasattr(setup, "cabling") else load_setup(setup)
         self.when = as_datetime(when)
-        self.cabling = self.setup.cabling_at(self.when)
-        self.table = build_table(self.setup, self.when, **table_kw)
+        # the stand as it was at `when`: that entry's detectors and trigger, so
+        # everything reading mapping.setup follows dated changes of placement
+        # and trigger, not only of cabling
+        self.setup = full.at(self.when)
+        self.cabling = self.setup.cabling[0]
+        self.table = build_table(full, self.when, **table_kw)
         # (fec 0-15 + "any" at 16, vmm, ch) -> row in table, -1 if not cabled
         self._row = np.full((17, 32, 64), -1, dtype=np.int64)
         f = self.table["fec"].to_numpy()

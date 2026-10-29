@@ -30,12 +30,23 @@ DEFAULT_SETUP_FILE = Path.home() / ".config" / "p2-readout" / "setup"
 SUFFIXES = (".yaml", ".yml")
 
 
+_UNSET = object()
+
+
 @dataclass(frozen=True)
 class CablingEntry:
-    """Stage A: which hybrid reads which detector connector, from `valid_from`."""
+    """The stand from `valid_from`: which hybrid reads which detector connector,
+    and optionally where the detectors are and which trigger is used.
+
+    detectors/trigger left out (None/_UNSET) mean "as in the setup's top level";
+    an entry written by the DAQ's Setup tab gives both, so it is a complete
+    snapshot of the stand.
+    """
     valid_from: dt.datetime
     hybrids: tuple
     note: str = ""
+    detectors: dict = None           # name -> {"z_mm", "alias"}; None = setup's
+    trigger: object = _UNSET         # dict, None (= no trigger) or _UNSET = setup's
 
 
 @dataclass(frozen=True)
@@ -64,6 +75,16 @@ class Setup:
                 f"setup {self.name!r} has no cabling before {t:%Y-%m-%d %H:%M}; "
                 f"first entry starts {self.cabling[0].valid_from:%Y-%m-%d %H:%M}")
         return found
+
+    def at(self, when):
+        """This setup as the stand was at `when`: detectors and trigger of the
+        entry in force then (falling back to the top level), and only that
+        cabling entry. What a mapping for that time should describe."""
+        e = self.cabling_at(when)
+        return Setup(**{**self.__dict__,
+                        "detectors": e.detectors if e.detectors is not None else self.detectors,
+                        "trigger": self.trigger if e.trigger is _UNSET else e.trigger,
+                        "cabling": (e,)})
 
 
 def as_datetime(when):
@@ -153,16 +174,40 @@ def _parse(d, path):
     name = need(d, "name", "the setup")
     design = need(d, "design", "the setup")
     des = routing.design(design)
-    detectors = {}
-    for det in need(d, "detectors", "the setup"):
-        dn = need(det, "name", "an entry of detectors")
-        if dn in detectors:
-            raise ValueError(f"{path}: detector {dn!r} listed twice")
-        detectors[dn] = {k: v for k, v in det.items() if k != "name"}
+
+    def parse_detectors(lst, where):
+        out = {}
+        for det in lst:
+            dn = need(det, "name", f"an entry of {where}")
+            if dn in out:
+                raise ValueError(f"{path}: detector {dn!r} listed twice in {where}")
+            if "z_mm" in det and not isinstance(det["z_mm"], (int, float)):
+                raise ValueError(f"{path}: {where} {dn}: z_mm must be a number")
+            out[dn] = {k: v for k, v in det.items() if k != "name"}
+        return out
+
+    def parse_trigger(t, where):
+        if t is None:
+            return None
+        if not isinstance(t, dict) or not all(isinstance(t.get(k), int) and t[k] >= 0
+                                              for k in ("hybrid", "vmm", "ch")):
+            raise ValueError(f"{path}: {where} trigger must be null or "
+                             "{hybrid, vmm, ch} (non-negative integers)")
+        if not 0 <= t["ch"] <= 63:
+            raise ValueError(f"{path}: {where} trigger channel {t['ch']} out of range 0-63")
+        return dict(t)
+
+    detectors = parse_detectors(need(d, "detectors", "the setup"), "detectors")
+    top_trigger = parse_trigger(d.get("trigger"), "the setup's")
 
     entries = []
     for e in need(d, "cabling", "the setup"):
         vf = as_datetime(need(e, "valid_from", "an entry of cabling"))
+        e_dets = (parse_detectors(e["detectors"], f"cabling from {vf}")
+                  if "detectors" in e else None)
+        e_trig = parse_trigger(e["trigger"], f"cabling from {vf}") if "trigger" in e else _UNSET
+        here = e_dets if e_dets is not None else detectors
+        trig = top_trigger if e_trig is _UNSET else e_trig
         rows = need(e, "hybrids", f"cabling from {vf}")
         seen_vmm, seen_conn = {}, set()
         for r in rows:
@@ -173,9 +218,12 @@ def _parse(d, path):
                 raise ValueError(f"{path}: fec {fec} out of range 0-15")
             for k in ("detector", "connector", "hybrid", "bottom_vmm", "top_vmm"):
                 need(r, k, f"a hybrid row of cabling from {vf}")
-            if r["detector"] not in detectors:
+            if r["detector"] not in here:
                 raise ValueError(f"{path}: cabling from {vf} uses unknown detector "
                                  f"{r['detector']!r}")
+            if trig and fec is None and trig["vmm"] in (r["bottom_vmm"], r["top_vmm"]):
+                raise ValueError(f"{path}: cabling from {vf}: VMM {trig['vmm']} is the "
+                                 f"trigger channel's VMM and also cabled to {r['detector']}")
             if not 1 <= r["connector"] <= des["n_connectors"]:
                 raise ValueError(f"{path}: connector {r['connector']} out of range")
             # a VMM id repeats across FECs; a row without fec matches any FEC,
@@ -196,7 +244,8 @@ def _parse(d, path):
         rows = [{**r, "fec": d["fec"]} if "fec" not in r and "fec" in d else r
                 for r in rows]
         entries.append(CablingEntry(valid_from=vf, hybrids=tuple(dict(r) for r in rows),
-                                    note=e.get("note", "")))
+                                    note=e.get("note", ""), detectors=e_dets,
+                                    trigger=e_trig))
     entries.sort(key=lambda e: e.valid_from)
     if len({e.valid_from for e in entries}) != len(entries):
         raise ValueError(f"{path}: two cabling entries share a valid_from")
@@ -205,7 +254,7 @@ def _parse(d, path):
              "fec", "hv"}
     return Setup(name=name, site=d.get("site", ""), design=design,
                  detectors=detectors, cabling=tuple(entries),
-                 trigger=d.get("trigger"), description=d.get("description", ""),
+                 trigger=top_trigger, description=d.get("description", ""),
                  hv=_parse_hv(d.get("hv"), detectors, path),
                  path=path, extra={k: v for k, v in d.items() if k not in known})
 
