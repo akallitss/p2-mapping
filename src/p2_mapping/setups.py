@@ -47,6 +47,7 @@ class Setup:
     cabling: tuple                   # CablingEntry, sorted by valid_from
     trigger: dict = None             # {"hybrid", "vmm", "ch"} or None
     description: str = ""
+    hv: dict = None                  # see _parse_hv; None = the setup says nothing about HV
     path: str = None
     sha256: str = None
     extra: dict = field(default_factory=dict)
@@ -201,8 +202,73 @@ def _parse(d, path):
         raise ValueError(f"{path}: two cabling entries share a valid_from")
 
     known = {"name", "site", "design", "detectors", "cabling", "trigger", "description",
-             "fec"}
+             "fec", "hv"}
     return Setup(name=name, site=d.get("site", ""), design=design,
                  detectors=detectors, cabling=tuple(entries),
                  trigger=d.get("trigger"), description=d.get("description", ""),
+                 hv=_parse_hv(d.get("hv"), detectors, path),
                  path=path, extra={k: v for k, v in d.items() if k not in known})
+
+
+def _parse_hv(hv, detectors, path):
+    """The HV section: which supply channel feeds which electrode, and the voltages.
+
+        hv:
+          set_here: true            # the DAQ of this setup sets the voltages
+          ceilings: {mesh: 450, drift: 900}
+          channels:                 # (card, channel) per electrode
+            P2_IN: {drift: [8, 0], mesh: [8, 1]}
+            EIC_uRWELL_front: {drift: [8, 6], resist: [12, 0]}
+          references: [EIC_uRWELL_front]   # HV only, read out elsewhere
+          operating:
+            P2_IN: {drift: 740, mesh: 440}
+
+    Every channel name is a detector of the setup or listed in references; a
+    (card, channel) feeds one electrode only; every operating voltage is for a
+    mapped electrode and under its ceiling. With set_here false (e.g. the lab,
+    where another machine holds the crate) channels and operating may be empty.
+    """
+    if hv is None:
+        return None
+    if not isinstance(hv, dict):
+        raise ValueError(f"{path}: hv must be a mapping")
+    refs = list(hv.get("references") or [])
+    names = set(detectors) | set(refs)
+    channels, seen = {}, {}
+    for det, roles in (hv.get("channels") or {}).items():
+        if det not in names:
+            raise ValueError(f"{path}: hv channel for unknown {det!r} (not a detector "
+                             "and not in hv.references)")
+        channels[det] = {}
+        for role, cc in roles.items():
+            if not (isinstance(cc, (list, tuple)) and len(cc) == 2
+                    and all(isinstance(x, int) and x >= 0 for x in cc)):
+                raise ValueError(f"{path}: hv channel {det}.{role} must be [card, channel]")
+            key = (cc[0], cc[1])
+            if key in seen:
+                raise ValueError(f"{path}: HV card {key[0]} channel {key[1]} feeds both "
+                                 f"{seen[key]} and {det}.{role}")
+            seen[key] = f"{det}.{role}"
+            channels[det][role] = key
+    ceilings = {k: float(v) for k, v in (hv.get("ceilings") or {}).items()}
+    operating = {}
+    for det, roles in (hv.get("operating") or {}).items():
+        operating[det] = {}
+        for role, v in roles.items():
+            if role not in channels.get(det, {}):
+                raise ValueError(f"{path}: hv operating {det}.{role} has no channel")
+            if not isinstance(v, (int, float)) or v < 0:
+                raise ValueError(f"{path}: hv operating {det}.{role} = {v!r} is not a voltage")
+            if role in ceilings and v > ceilings[role]:
+                raise ValueError(f"{path}: hv operating {det}.{role} = {v} V is above the "
+                                 f"{role} ceiling {ceilings[role]:g} V")
+            operating[det][role] = v
+    if hv.get("set_here", True):
+        missing = [f"{d}.{r}" for d, rr in channels.items() for r in rr
+                   if r not in operating.get(d, {})]
+        if missing:
+            raise ValueError(f"{path}: hv set_here but no operating voltage for "
+                             + ", ".join(missing))
+    return {"set_here": bool(hv.get("set_here", True)), "ceilings": ceilings,
+            "channels": channels, "references": refs, "operating": operating,
+            "note": hv.get("note", "")}

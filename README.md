@@ -83,6 +83,12 @@ configuration files.
 
 ## Versions
 
+- **0.4.0** optional `hv` section in a setup (`Setup.hv`): which supply channel
+  (card, channel) feeds which electrode, HV-only references, the operating point
+  and ceilings; `set_here: false` where another machine holds the crate. Checked
+  on load: one electrode per channel, names known, operating voltages mapped and
+  under their ceilings. sps_h4_2026 carries the beam test's channels and
+  operating point; lab_saclay_2026 says the crate is held by banco.
 - **0.3.0** cabling rows can name their FEC; tables carry `fec` (-1 = any) and
   lookup is by `(fec, vmm, ch)`, for setups with many FECs. Single-FEC setups
   unchanged.

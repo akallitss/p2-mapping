@@ -64,3 +64,26 @@ cabling:
       - {detector: P2_OUT, connector: 4, hybrid: 7, bottom_vmm: 14, top_vmm: 15, cable: HITACHI 2m}
       - {detector: P2_OUT, connector: 5, hybrid: 8, bottom_vmm: 16, top_vmm: 17, cable: HITACHI 2m}
       - {detector: P2_OUT, connector: 6, hybrid: 9, bottom_vmm: 18, top_vmm: 19, cable: HITACHI 2m}
+
+# HV, from DAQ_Control_VMM_Beam run_config_beam.py (P2_HV, URWELL_HV,
+# OPERATING_HV, MESH/DRIFT_CEILING_V). Channels confirmed at the beam on
+# 2026-07-22 (card 8); operating point of 2026-07-27/28, mirrored from Dream's
+# OPERATING_HV: P2_IN, the new metallic-mesh chamber, runs 10 V lower. The
+# uRWELL telescope references are read out by DREAM, not the VMM DAQ; only
+# their HV rides along, and scans never step them.
+hv:
+  set_here: true
+  ceilings: {mesh: 450, drift: 900}
+  references: [EIC_uRWELL_front, EIC_uRWELL_back]
+  channels:
+    P2_IN:  {drift: [8, 0], mesh: [8, 1]}
+    P2_MID: {drift: [8, 2], mesh: [8, 3]}
+    P2_OUT: {drift: [8, 4], mesh: [8, 5]}
+    EIC_uRWELL_front: {drift: [8, 6], resist: [12, 0]}
+    EIC_uRWELL_back:  {drift: [8, 7], resist: [12, 1]}
+  operating:
+    P2_IN:  {drift: 740, mesh: 440}
+    P2_MID: {drift: 750, mesh: 450}
+    P2_OUT: {drift: 750, mesh: 450}
+    EIC_uRWELL_front: {drift: 620, resist: 420}
+    EIC_uRWELL_back:  {drift: 620, resist: 420}

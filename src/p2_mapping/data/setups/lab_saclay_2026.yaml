@@ -53,3 +53,11 @@ cabling:
       - {detector: P2_OUT, connector: 3, hybrid: 7, bottom_vmm: 14, top_vmm: 15, cable: SAMPTEC 2m}
       - {detector: P2_OUT, connector: 4, hybrid: 8, bottom_vmm: 16, top_vmm: 17, cable: SAMPTEC 2m}
       - {detector: P2_OUT, connector: 5, hybrid: 9, bottom_vmm: 18, top_vmm: 19, cable: SAMPTEC 2m}
+
+# HV: the lab crate is held by banco, not by this DAQ, so no channel map or
+# voltages are set from here. The operator declares the HV state per run in the
+# DAQ's config/lab_hv_state.txt (recorded as lab_hv_note in run_config.json).
+hv:
+  set_here: false
+  ceilings: {mesh: 450, drift: 900}
+  note: "lab crate held by banco; HV state declared per run in config/lab_hv_state.txt"
