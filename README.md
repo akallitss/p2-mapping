@@ -1,93 +1,90 @@
-# p2basket-mapping
+# p2-mapping
 
+VMM electronics channel `(vmm, ch)` to P2 detector pad, for a given setup and
+date. Part of the P2 readout software split (decode / mapping / monitor); it
+does not depend on `p2-decode` and works on any table with `vmm` and `ch`.
 
+## Use
 
-## Getting started
+```python
+from p2_mapping import load_mapping
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://drf-gitlab.cea.fr/p2/p2readout/p2basket-mapping.git
-git branch -M main
-git push -uf origin main
+m = load_mapping("lab_saclay_2026", when="2026-10-27T10:00")   # run start time
+pads = m.lookup(hits)          # aligned with hits: detector, connector_N, strip,
+                               # channel_id, pad_cx, pad_cy, z_mm, cable, mapped ...
+m.table                        # one row per instrumented (vmm, ch)
+m.write_resolved(run_dir / "setup_resolved.json")
 ```
 
-## Integrate with your tools
+```bash
+p2-mapping setups                                   # list known setups
+p2-mapping show  --setup sps_h4_2026 --when 2026-08-01T12:00
+p2-mapping table --setup lab_saclay_2026 --when 2026-10-27 table.csv
+```
 
-* [Set up project integrations](https://drf-gitlab.cea.fr/p2/p2readout/p2basket-mapping/-/settings/integrations)
+## Three stages
 
-## Collaborate with your team
+| Stage | What | Where | Changes when |
+| --- | --- | --- | --- |
+| A cabling | hybrid → detector connector, cable, per-half channel order | `data/setups/<setup>.yaml`, dated entries | someone re-cables |
+| B routing | connector half + channel → strip → `channel_id` | `routing.py` (`DESIGNS`) | a new adapter or PCB design |
+| C geometry | `channel_id` → pad centre, size, radius, phi | `data/geometry/p2_basket_pads.csv` | never, for one detector design |
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+Detector placement (`z_mm`) is per setup, in the setup file.
 
-## Test and Deploy
+## Several FECs
 
-Use the built-in continuous integration in GitLab.
+A VMM id is 5 bits, so with more than one FEC the same id repeats; the full
+experiment (180 hybrids, 360 VMMs) needs at least 12 FECs. A hybrid row can
+name its FEC (`fec: 3`), or the setup can give one default (`fec:` at top
+level). A row without a FEC matches any FEC, which is how the single-FEC SPS
+and lab setups are written. Lookup is by `(fec, vmm, ch)` when the hits carry
+`fec`; a channel cabled twice on the same FEC, or a no-FEC row sharing a VMM id
+with any other row, is refused.
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+## Choosing the setup
 
-***
+Highest priority first: an explicit name or path (`--setup`), the environment
+variable `P2_SETUP`, a one-line default in `$P2_SETUP_FILE` or
+`~/.config/p2-readout/setup`. With none of these the package refuses instead of
+guessing a site. Site-local setup files can live outside the package: put their
+directory in `P2_SETUPS_DIR`.
 
-# Editing this README
+A cabling entry is picked by time, so a re-cabling is a new entry under
+`cabling:` with its `valid_from`, not a new setup. A time before the first entry is an
+error: there is no cabling to assume.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## Shipped setups
 
-## Suggestions for a good README
+| Setup | Entries |
+| --- | --- |
+| `sps_h4_2026` | from 2026-07-29: c4-c6, HITACHI, P2_IN c5/c6 top halves `linear`; from 2026-08-01 11:14: P2_MID c4 + c6 SAMPTEC |
+| `lab_saclay_2026` | from 2026-10-22: c4-c6, SAMPTEC, all `reverse`; from 2026-10-26: c3-c5 |
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+The P2_IN `linear` halves are recorded per cabling entry, not as a detector
+property: they were found at SPS with HITACHI cables, and the lab cosmic study
+(obs 63) does not favour them with Samtec cables.
 
-## Name
-Choose a self-explaining name for your project.
+## Tests
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+```bash
+pytest
+P2_MAPPING_VMM_QA=../DAQ_Control_VMM_Beam/vmm_qa \
+P2_MAPPING_COSMIC=../P2_basket_analysis/cosmic_vmm_analysis pytest tests/test_legacy.py
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+`test_legacy.py` checks, row by row, that the tables equal what the existing
+code builds: `vmm_stations.build_pad_table()` (SPS, with its overrides, and all
+strategy / bottom-half scan variants) and `orientation_check.Mapper` for the
+lab before and after the c3-c5 re-cabling (`conn_shift` 0 and -1).
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+Setup files are YAML (PyYAML, `yaml.safe_load`), like the group's other
+configuration files.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+## Versions
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- **0.3.0** cabling rows can name their FEC; tables carry `fec` (-1 = any) and
+  lookup is by `(fec, vmm, ch)`, for setups with many FECs. Single-FEC setups
+  unchanged.
+- **0.2.0** setup files in YAML instead of TOML; same content, same tables.
+- **0.1.0** first release, TOML setup files.
