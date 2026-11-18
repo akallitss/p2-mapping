@@ -1,0 +1,47 @@
+{
+ "setup": "lab_saclay_2026",
+ "when": "2026-11-18T17:18:01",
+ "p2_mapping_version": "0.6.0",
+ "setup_sha256": "72c37a8dda5d12d4b44902191db9b7c80ed70d10c69e5d0b93058c7da95036dc",
+ "pads_sha256": "f9da5aa043d1a2c3124795a034bbfe0665139674d195344940e0219c50168ccd",
+ "n_hits": 44676,
+ "n_unmapped": 154,
+ "unmapped_vmms": [
+  0
+ ],
+ "detectors": {
+  "P2_IN": {
+   "n_hits": 14809,
+   "z_mm": 320.0,
+   "connectors": [
+    3,
+    4,
+    5
+   ],
+   "mean_pad_cx": 381.386528,
+   "mean_pad_cy": 159.595431
+  },
+  "P2_MID": {
+   "n_hits": 17082,
+   "z_mm": 630.0,
+   "connectors": [
+    3,
+    4,
+    5
+   ],
+   "mean_pad_cx": 398.848819,
+   "mean_pad_cy": 159.357698
+  },
+  "P2_OUT": {
+   "n_hits": 12631,
+   "z_mm": 940.0,
+   "connectors": [
+    3,
+    4,
+    5
+   ],
+   "mean_pad_cx": 364.814688,
+   "mean_pad_cy": 143.848766
+  }
+ }
+}
