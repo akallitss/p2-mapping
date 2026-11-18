@@ -12,6 +12,9 @@ from p2_mapping import load_mapping
 m = load_mapping("lab_saclay_2026", when="2026-10-27T10:00")   # run start time
 pads = m.lookup(hits)          # aligned with hits: detector, connector_N, strip,
                                # channel_id, pad_cx, pad_cy, z_mm, cable, mapped ...
+hits = m.annotate(hits)        # hits + detector, connector_N, strip, channel_id,
+                               # pad_cx, pad_cy, z_mm, mapped (columns="all": every one)
+m.annotate({"vmm": 2, "ch": 0})  # one hit, as a dict
 m.table                        # one row per instrumented (vmm, ch)
 m.write_resolved(run_dir / "setup_resolved.json")
 ```
@@ -78,11 +81,28 @@ code builds: `vmm_stations.build_pad_table()` (SPS, with its overrides, and all
 strategy / bottom-half scan variants) and `orientation_check.Mapper` for the
 lab before and after the c3-c5 re-cabling (`conn_shift` 0 and -1).
 
+`test_reference.py` holds the mapping to a real capture: the first 33 packets
+of lab run_263 (`tests/data/lab_run263_head.pcapng`, the same file p2-decode
+tests on), its 44676 decoded hits and their reference pad coordinates, plus a
+readable per-detector summary (`lab_run263_head_pads.json`). The hits are
+committed, so this runs without p2-decode; with p2-decode installed the capture
+is decoded and annotated end to end as well. `tests/data/make_reference.py`
+says how the reference was made and checked; regenerate it only for an intended
+mapping change.
+
+CI runs `pytest` on GitHub (`.github/workflows/tests.yml`, Python 3.9 / 3.12 /
+3.13, with p2-decode) and on the CEA GitLab (`.gitlab-ci.yml`, not on the
+mirrored `ak/*` branches).
+
 Setup files are YAML (PyYAML, `yaml.safe_load`), like the group's other
 configuration files.
 
 ## Versions
 
+- **0.6.0** `Mapping.annotate(hits, columns=...)`: the hits with their physical
+  coordinates appended (a DataFrame, a dict of arrays, or one hit as a dict);
+  `ANNOTATE_COLUMNS` is the default set. Reference test on a real capture, and
+  CI on GitHub and GitLab. Nothing existing changed.
 - **0.5.0** a cabling entry may carry its own `detectors` (placement: alias, z)
   and `trigger` (or `trigger: null`), making it a complete dated snapshot of the
   stand; `Setup.at(when)` gives the stand at a time and `Mapping.setup` is that,

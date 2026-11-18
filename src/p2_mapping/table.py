@@ -27,6 +27,10 @@ from .setups import as_datetime, load_setup
 PAD_COLUMNS = ("pad_cx", "pad_cy", "radius", "phi", "pad_w", "pad_h",
                "pad_angle", "delta_phi")
 
+# what Mapping.annotate appends by default: where the hit is, and what it is on
+ANNOTATE_COLUMNS = ("detector", "connector_N", "strip", "channel_id",
+                    "pad_cx", "pad_cy", "z_mm", "mapped")
+
 
 @lru_cache(maxsize=4)
 def load_pads(design_name):
@@ -140,9 +144,41 @@ class Mapping:
         # the table's index is 0..n-1, so row -1 reindexes to an all-NaN row
         out = self.table[cols].reindex(r).reset_index(drop=True)
         if "mapped" in out:
-            out["mapped"] = out["mapped"].fillna(False).astype(bool)
+            out["mapped"] = out["mapped"].eq(True)            # NaN (uncabled) -> False
         if isinstance(hits, pd.DataFrame):
             out.index = hits.index
+        return out
+
+    def annotate(self, hits, columns=ANNOTATE_COLUMNS):
+        """`hits` with the physical coordinates of each hit appended.
+
+            hits = m.annotate(hits)      # + detector, connector_N, strip,
+                                         #   channel_id, pad_cx, pad_cy, z_mm, mapped
+
+        hits: a DataFrame, a dict of arrays, or one hit as a dict of scalars,
+        with vmm and ch (and fec, used when the setup names FECs). Returns the
+        same kind of object, a copy: the hit's own fields first and unchanged,
+        then `columns` (any table columns; "all" for every one lookup gives).
+        A field of the same name already in `hits` is replaced, so annotating
+        again with another mapping overwrites the earlier coordinates.
+        Uncabled channels get NaN (detector None) and mapped=False.
+        """
+        cols = None if isinstance(columns, str) and columns == "all" else list(columns)
+        if isinstance(hits, pd.DataFrame):
+            pads = self.lookup(hits, cols)
+            out = hits.drop(columns=[c for c in pads.columns if c in hits.columns])
+            for c in pads.columns:               # positional: safe with any index
+                out[c] = pads[c].to_numpy()
+            return out
+        if not isinstance(hits, dict):
+            raise TypeError(f"hits must be a DataFrame or a dict, got {type(hits).__name__}")
+        one = np.ndim(hits["vmm"]) == 0
+        keys = [k for k in ("vmm", "ch", "fec") if k in hits]
+        pads = self.lookup({k: np.atleast_1d(hits[k]) for k in keys}, cols)
+        out = dict(hits)
+        for c in pads.columns:
+            v = pads[c].to_numpy()
+            out[c] = _scalar(v[0], v.dtype == object) if one else v
         return out
 
     def pad_xy(self):
@@ -184,6 +220,13 @@ class Mapping:
         with open(path, "w") as f:
             json.dump(self.resolved(), f, indent=2, default=_json_default)
         return path
+
+
+def _scalar(v, text):
+    """A plain Python value for one annotated hit; a missing text field is None."""
+    if text:
+        return None if not isinstance(v, str) else v
+    return v.item() if isinstance(v, np.generic) else v
 
 
 def _json_default(o):

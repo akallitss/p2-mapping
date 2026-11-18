@@ -1,0 +1,23 @@
+# Run the test suite on every push and pull request.
+name: tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12", "3.13"]   # 3.12 is what the DAQ box runs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[test]"
+      # only for the end-to-end reference test (decode the capture, then map it)
+      - run: pip install "p2-decode @ git+https://github.com/akallitss/p2-decode@v0.9.0"
+      - run: pytest -q -rs
